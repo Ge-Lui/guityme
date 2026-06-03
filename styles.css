@@ -352,6 +352,17 @@ body {
   color: var(--text);
 }
 
+.btn-excel {
+  border-color: rgba(16, 124, 65, 0.4);
+  color: #34d399; /* soft green matching var(--success) */
+}
+
+.btn-excel:hover {
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+  border-color: #34d399;
+}
+
 .btn-danger {
   background: rgba(248, 113, 113, 0.15);
   color: var(--danger);

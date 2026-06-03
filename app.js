@@ -406,6 +406,373 @@ function exportData() {
   URL.revokeObjectURL(a.href);
 }
 
+async function exportExcel() {
+  const list = getFilteredEntries();
+  if (list.length === 0) {
+    alert("No entries to export.");
+    return;
+  }
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Timesheet Report");
+
+    // Enable gridlines
+    worksheet.views = [{ showGridLines: true }];
+
+    worksheet.pageSetup = {
+      orientation: "portrait",
+      paperSize: 1, // Letter size
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 999, // Let it break naturally vertically
+      margins: {
+        left: 0.5,
+        right: 0.5,
+        top: 0.5,
+        bottom: 0.5,
+        header: 0.3,
+        footer: 0.3,
+      },
+      printTitlesRow: "8:9", // Repeat shift headers on every page
+    };
+
+    // Column widths (based on VisayasMed specifications: Date 130px, AM/PM 70px, Hours 65px)
+    worksheet.getColumn(1).width = 18.5; // Date
+    worksheet.getColumn(2).width = 10.5; // AM In
+    worksheet.getColumn(3).width = 10.5; // AM Out
+    worksheet.getColumn(4).width = 10.5; // PM In
+    worksheet.getColumn(5).width = 10.5; // PM Out
+    worksheet.getColumn(6).width = 9.5;  // Hours
+
+    // Brand Palette
+    const brandNavy = "2B5597";      // Main headers
+    const steelBlue = "4169A9";      // PM Shift header
+    const lightBlue = "3D6BAD";      // Subheaders
+    const darkNavy = "1A3A6B";       // Title & Employee Name
+    const fontMuted = "8FA3C1";      // Metadata labels
+    const textDark = "2D3748";       // Standard time text
+    const placeholderColor = "C4BEBC";
+    
+    // Status metrics colors
+    const amberColor = "E8A020";
+    const limeGreen = "7AB82A";
+    const brandGreen = "3A6B1A";     // Month separator text
+    const monthBg = "F0FBE6";        // Month separator bg
+    const monthBorder = "C8E6A0";    // Month separator border
+    
+    const bgGray = "F8FAFC";
+    const borderGray = "E2E8F0";     // Standard border
+    const dataBorderColor = "EEF2F7"; // Data row borders
+
+    const borderStyleThin = {
+      top: { style: "thin", color: { argb: borderGray } },
+      left: { style: "thin", color: { argb: borderGray } },
+      bottom: { style: "thin", color: { argb: borderGray } },
+      right: { style: "thin", color: { argb: borderGray } },
+    };
+
+    // 1. Header Banner Row (Row 1)
+    worksheet.mergeCells("A1:F1");
+    const bannerCell = worksheet.getCell("A1");
+    bannerCell.value = "TIMESHEET & HOURS SUMMARY";
+    bannerCell.font = { name: "Segoe UI", size: 14, bold: true, color: { argb: "FFFFFF" } };
+    bannerCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: brandNavy } };
+    bannerCell.alignment = { vertical: "middle", horizontal: "center" };
+    worksheet.getRow(1).height = 36;
+
+    // 2. Employee Info Row (Row 3)
+    worksheet.getRow(3).height = 24;
+    
+    worksheet.getCell("A3").value = "Employee Name:";
+    worksheet.getCell("A3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: fontMuted } };
+    worksheet.getCell("B3").value = state.owner || "Angelu Banogbanog";
+    worksheet.getCell("B3").font = { name: "Segoe UI", size: 11, bold: true, color: { argb: darkNavy } };
+
+    worksheet.getCell("D3").value = "Exported On:";
+    worksheet.getCell("D3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: fontMuted } };
+    worksheet.getCell("E3").value = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    worksheet.getCell("E3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: textDark } };
+
+    // Set background fill and bottom border for the Employee Info row (Row 3)
+    for (let c = 1; c <= 6; c++) {
+      const cell = worksheet.getCell(3, c);
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgGray } };
+      cell.border = {
+        bottom: { style: "thin", color: { argb: borderGray } }
+      };
+    }
+
+    // 3. Summary Metrics Headers (Row 5)
+    const overviewHeaders = ["Target Hours", "Total Logged", "Remaining Hours", "Est. Days Left", "Completion Rate"];
+    overviewHeaders.forEach((val, idx) => {
+      const colLetter = String.fromCharCode(65 + idx);
+      const cell = worksheet.getCell(`${colLetter}5`);
+      cell.value = val.toUpperCase();
+      cell.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: fontMuted } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgGray } };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = borderStyleThin;
+    });
+    worksheet.getRow(5).height = 24;
+
+    // Table Headers (Row 8 & 9)
+    worksheet.mergeCells("A8:A9");
+    worksheet.getCell("A8").value = "Date";
+    worksheet.getCell("A8").alignment = { vertical: "middle", horizontal: "center" };
+    
+    worksheet.mergeCells("B8:C8");
+    worksheet.getCell("B8").value = "AM Shift";
+    worksheet.getCell("B8").alignment = { vertical: "middle", horizontal: "center" };
+
+    worksheet.mergeCells("D8:E8");
+    worksheet.getCell("D8").value = "PM Shift";
+    worksheet.getCell("D8").alignment = { vertical: "middle", horizontal: "center" };
+
+    worksheet.mergeCells("F8:F9");
+    worksheet.getCell("F8").value = "Hours";
+    worksheet.getCell("F8").alignment = { vertical: "middle", horizontal: "center" };
+
+    worksheet.getCell("B9").value = "Time In";
+    worksheet.getCell("B9").alignment = { vertical: "middle", horizontal: "center" };
+    worksheet.getCell("C9").value = "Time Out";
+    worksheet.getCell("C9").alignment = { vertical: "middle", horizontal: "center" };
+    worksheet.getCell("D9").value = "Time In";
+    worksheet.getCell("D9").alignment = { vertical: "middle", horizontal: "center" };
+    worksheet.getCell("E9").value = "Time Out";
+    worksheet.getCell("E9").alignment = { vertical: "middle", horizontal: "center" };
+
+    // Format Headers (Row 8 & 9)
+    const headerCols = {
+      "A8": brandNavy, "A9": brandNavy,
+      "B8": brandNavy,
+      "C8": brandNavy,
+      "D8": steelBlue,
+      "E8": steelBlue,
+      "F8": brandNavy, "F9": brandNavy,
+      "B9": lightBlue, "C9": lightBlue, "D9": lightBlue, "E9": lightBlue
+    };
+
+    Object.keys(headerCols).forEach(cellRef => {
+      const cell = worksheet.getCell(cellRef);
+      const isSub = cellRef.endsWith("9") && cellRef !== "A9" && cellRef !== "F9";
+      cell.font = {
+        name: "Segoe UI",
+        size: isSub ? 10 : 11,
+        bold: !isSub,
+        color: { argb: "FFFFFF" }
+      };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerCols[cellRef] } };
+      cell.border = borderStyleThin;
+    });
+
+    worksheet.getRow(8).height = 24;
+    worksheet.getRow(9).height = 20;
+
+    let currentRow = 10;
+    const monthsInfo = [
+      { key: "2026-01", name: "January 2026" },
+      { key: "2026-02", name: "February 2026" },
+      { key: "2026-03", name: "March 2026" },
+      { key: "2026-04", name: "April 2026" },
+      { key: "2026-05", name: "May 2026" },
+      { key: "2026-06", name: "June 2026" },
+    ];
+
+    const borderStyleDataThin = {
+      top: { style: "thin", color: { argb: dataBorderColor } },
+      left: { style: "thin", color: { argb: dataBorderColor } },
+      bottom: { style: "thin", color: { argb: dataBorderColor } },
+      right: { style: "thin", color: { argb: dataBorderColor } },
+    };
+
+    monthsInfo.forEach((mInfo) => {
+      const monthEntries = list
+        .filter((e) => monthKey(e.date) === mInfo.key && e.hours > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      if (monthEntries.length === 0) return;
+
+      // Spacing Row (No borders, empty)
+      if (currentRow > 10) {
+        const blankRow = worksheet.getRow(currentRow);
+        for (let c = 1; c <= 6; c++) {
+          blankRow.getCell(c).value = "";
+          blankRow.getCell(c).border = {};
+          blankRow.getCell(c).fill = {};
+        }
+        blankRow.height = 18;
+        currentRow++;
+      }
+
+      // Month Section Separator Row
+      worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+      const mHeaderCell = worksheet.getCell(`A${currentRow}`);
+      mHeaderCell.value = mInfo.name.toUpperCase();
+      mHeaderCell.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: brandGreen } };
+      mHeaderCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: monthBg } };
+      mHeaderCell.alignment = { vertical: "middle", horizontal: "center" };
+      
+      const monthRowBorder = {
+        top: { style: "thin", color: { argb: monthBorder } },
+        bottom: { style: "thin", color: { argb: monthBorder } },
+        left: { style: "thin", color: { argb: monthBorder } },
+        right: { style: "thin", color: { argb: monthBorder } }
+      };
+
+      for (let c = 1; c <= 6; c++) {
+        worksheet.getCell(currentRow, c).border = monthRowBorder;
+      }
+      worksheet.getRow(currentRow).height = 26;
+      currentRow++;
+
+      // Populate Worked Entries
+      monthEntries.forEach((entry, i) => {
+        const d = new Date(entry.date + "T12:00:00");
+        const dateLabel = d.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+
+        const r = worksheet.getRow(currentRow);
+        
+        // Date Col
+        r.getCell(1).value = dateLabel;
+        r.getCell(1).font = { name: "Segoe UI", size: 11, color: { argb: "4A5568" } };
+        r.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
+
+        // Shift times
+        const formatTimeVal = (val, cellObj) => {
+          if (!val || val === "—") {
+            cellObj.value = "—";
+            cellObj.font = { name: "Segoe UI", size: 11, color: { argb: placeholderColor } };
+          } else {
+            cellObj.value = val;
+            cellObj.font = { name: "Segoe UI", size: 11, color: { argb: textDark } };
+          }
+          cellObj.alignment = { vertical: "middle", horizontal: "center" };
+        };
+
+        formatTimeVal(entry.amIn, r.getCell(2));
+        formatTimeVal(entry.amOut, r.getCell(3));
+        formatTimeVal(entry.pmIn, r.getCell(4));
+        formatTimeVal(entry.pmOut, r.getCell(5));
+
+        // Hours Col
+        r.getCell(6).value = entry.hours != null ? Number(entry.hours) : 0;
+        r.getCell(6).font = { name: "Segoe UI", size: 11, bold: true, color: { argb: brandNavy } };
+        r.getCell(6).alignment = { vertical: "middle", horizontal: "right" };
+        r.getCell(6).numFmt = "0.00";
+
+        // Zebra striping
+        const rowBg = i % 2 === 0 ? "FFFFFF" : bgGray;
+        for (let c = 1; c <= 6; c++) {
+          const cell = r.getCell(c);
+          cell.border = borderStyleDataThin;
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+        }
+        r.height = 22;
+        currentRow++;
+      });
+    });
+
+    // Total Row
+    const totalRowIdx = currentRow;
+    const totalRow = worksheet.getRow(totalRowIdx);
+    worksheet.mergeCells(`A${totalRowIdx}:E${totalRowIdx}`);
+    totalRow.getCell(1).value = "TOTAL WORKED HOURS (JAN - JUN)";
+    totalRow.getCell(1).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: darkNavy } };
+    totalRow.getCell(1).alignment = { vertical: "middle", horizontal: "right" };
+
+    totalRow.getCell(6).value = { formula: `SUM(F11:F${totalRowIdx - 1})` };
+    totalRow.getCell(6).font = { name: "Segoe UI", size: 11, bold: true, color: { argb: brandNavy } };
+    totalRow.getCell(6).alignment = { vertical: "middle", horizontal: "right" };
+    totalRow.getCell(6).numFmt = "0.00";
+
+    for (let c = 1; c <= 6; c++) {
+      const cell = totalRow.getCell(c);
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgGray } };
+      cell.border = borderStyleThin;
+    }
+    totalRow.height = 28;
+
+    // Fill Overall Summary Cards (Row 6)
+    worksheet.getCell("A6").value = state.targetHours || 702;
+    worksheet.getCell("B6").value = { formula: `F${totalRowIdx}` };
+    worksheet.getCell("C6").value = { formula: `MAX(0, A6-B6)` };
+    worksheet.getCell("D6").value = { formula: `C6/8` };
+    worksheet.getCell("E6").value = { formula: `B6/A6` };
+
+    // Status-based color coding for metric values in Row 6
+    const valueFmts = [
+      { color: darkNavy, numFmt: "0.00" },      // Target Hours
+      { color: brandNavy, numFmt: "0.00" },     // Total Logged
+      { color: amberColor, numFmt: "0.00" },     // Remaining Hours
+      { color: amberColor, numFmt: "0.00" },     // Est. Days Left
+      { color: limeGreen, numFmt: "0.0%" }      // Completion Rate
+    ];
+
+    valueFmts.forEach((fmt, idx) => {
+      const colLetter = String.fromCharCode(65 + idx);
+      const cell = worksheet.getCell(`${colLetter}6`);
+      cell.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: fmt.color } };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = borderStyleThin;
+      cell.numFmt = fmt.numFmt;
+    });
+    worksheet.getRow(6).height = 28;
+
+    // --- APPLY 2PX SOLID NAVY OUTER BORDER AROUND THE TABLE (Rows 8 to totalRowIdx) ---
+    for (let r = 8; r <= totalRowIdx; r++) {
+      for (let c = 1; c <= 6; c++) {
+        const cell = worksheet.getCell(r, c);
+        const cellBorder = { ...cell.border };
+        
+        // Top border
+        if (r === 8) {
+          cellBorder.top = { style: "medium", color: { argb: brandNavy } };
+        }
+        // Left border
+        if (c === 1) {
+          cellBorder.left = { style: "medium", color: { argb: brandNavy } };
+        }
+        // Bottom border
+        if (r === totalRowIdx) {
+          cellBorder.bottom = { style: "medium", color: { argb: brandNavy } };
+        }
+        // Right border
+        if (c === 6) {
+          cellBorder.right = { style: "medium", color: { argb: brandNavy } };
+        }
+        cell.border = cellBorder;
+      }
+    }
+
+    // --- Generate & Download ---
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    
+    const filterText = $("#monthFilter").value ? `-${$("#monthFilter").value}` : "";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `timesheet-summary${filterText}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+  } catch (err) {
+    console.error("Excel Export Error:", err);
+    alert("Export failed: " + err.message);
+  }
+}
+
 function importData(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -443,6 +810,54 @@ async function loadInitial() {
     try {
       state = JSON.parse(saved);
       state.targetHours = state.targetHours ?? TARGET_HOURS;
+      
+      let migrated = false;
+      state.entries = state.entries.map((entry) => {
+        // ID 45: April 2, 4.0 hours -> Feb 4
+        if (entry.id === 45 && entry.date === "2026-04-02" && entry.hours === 4.0) {
+          entry.date = "2026-02-04";
+          migrated = true;
+        }
+        // ID 47: April 3, 6.8 hours -> March 4
+        if (entry.id === 47 && entry.date === "2026-04-03" && entry.hours === 6.8) {
+          entry.date = "2026-03-04";
+          migrated = true;
+        }
+        // ID 67: May 2, 7.0 hours -> Feb 5
+        if (entry.id === 67 && entry.date === "2026-05-02" && entry.hours === 7.0) {
+          entry.date = "2026-02-05";
+          migrated = true;
+        }
+        // ID 69: May 3, 8.0 hours -> March 5
+        if (entry.id === 69 && entry.date === "2026-05-03" && entry.hours === 8.0) {
+          entry.date = "2026-03-05";
+          migrated = true;
+        }
+        // ID 83: June 2, 7.8333 hours -> Feb 6
+        if (entry.id === 83 && entry.date === "2026-06-02" && entry.hours === 7.8333) {
+          entry.date = "2026-02-06";
+          migrated = true;
+        }
+        // ID 85 (or duplicate June 3): June 3, 9.0/8.5 hours -> March 6
+        if (entry.date === "2026-06-03" && (entry.hours === 9.0 || entry.hours === 8.5)) {
+          entry.date = "2026-03-06";
+          migrated = true;
+        }
+        return entry;
+      });
+
+      if (migrated) {
+        state.entries.sort((a, b) => {
+          const dateComp = a.date.localeCompare(b.date);
+          if (dateComp !== 0) return dateComp;
+          return (a.amIn || "").localeCompare(b.amIn || "");
+        });
+        state.entries.forEach((e, idx) => {
+          e.id = idx + 1;
+        });
+        persist();
+      }
+
       state.entries = sanitizeEntries(state.entries);
       return;
     } catch {
@@ -474,6 +889,7 @@ async function loadInitial() {
 function bindEvents() {
   $("#btnAdd").addEventListener("click", () => openModal());
   $("#btnExport").addEventListener("click", exportData);
+  $("#btnExportExcel").addEventListener("click", exportExcel);
   $("#btnImport").addEventListener("change", (ev) => {
     const file = ev.target.files?.[0];
     if (file) importData(file);
