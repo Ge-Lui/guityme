@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Total Hours — Angelu Banogbanog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-pattern" aria-hidden="true"></div>
+
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-tag">Personal tracker</span>
+        <h1>Total Hours</h1>
+        <p class="owner">Angelu Banogbanog</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="btnExport" title="Download backup JSON">Export</button>
+        <label class="btn btn-ghost import-label">
+          Import
+          <input type="file" id="btnImport" accept=".json" hidden />
+        </label>
+        <button type="button" class="btn btn-primary" id="btnAdd">+ Log day</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="summary" aria-label="Summary">
+      <article class="card card-highlight">
+        <span class="card-label">Hours logged</span>
+        <span class="card-value" id="totalHours">—</span>
+        <div class="progress-wrap">
+          <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+        </div>
+        <span class="card-hint"><span id="pctDone">0</span>% of <span id="targetLabel">702</span> hr target</span>
+      </article>
+      <article class="card">
+        <span class="card-label">Remaining</span>
+        <span class="card-value card-value-accent" id="remainingHrs">—</span>
+        <span class="card-hint">hours to reach target</span>
+      </article>
+      <article class="card">
+        <span class="card-label">≈ Days left</span>
+        <span class="card-value" id="remainingDays">—</span>
+        <span class="card-hint">at 8 hrs / day</span>
+      </article>
+      <article class="card">
+        <span class="card-label">Entries</span>
+        <span class="card-value" id="entryCount">—</span>
+        <span class="card-hint">work days recorded</span>
+      </article>
+    </section>
+
+    <section class="toolbar">
+      <div class="search-wrap">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="search" id="search" placeholder="Search by date…" autocomplete="off" />
+      </div>
+      <select id="monthFilter" class="select select-month" aria-label="Filter by month">
+        <option value="">All months</option>
+      </select>
+      <select id="sort" class="select">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="hours-desc">Most hours</option>
+        <option value="hours-asc">Least hours</option>
+      </select>
+    </section>
+
+    <section class="table-section">
+      <div class="table-scroll">
+        <table class="timesheet">
+          <thead>
+            <tr>
+              <th rowspan="2" class="col-date">Date</th>
+              <th colspan="2" class="group-am">AM</th>
+              <th colspan="2" class="group-pm">PM</th>
+              <th rowspan="2" class="col-hrs">No. of Hrs</th>
+              <th rowspan="2" class="col-actions"></th>
+            </tr>
+            <tr class="subhead">
+              <th>Time in</th>
+              <th>Time out</th>
+              <th>Time in</th>
+              <th>Time out</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="5"><strong id="footerLabel">Total</strong><span class="footer-meta" id="footerMeta"></span></td>
+              <td class="mono" id="footerTotal">—</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="empty-state" id="emptyState" hidden>No entries match your search.</p>
+      <nav class="pagination" id="pagination" aria-label="Table pagination" hidden>
+        <div class="pagination-left">
+          <label class="page-size-label">
+            Rows per page
+            <select id="pageSize" class="select select-compact">
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <span class="pagination-range" id="pageRange"></span>
+        </div>
+        <div class="pagination-controls">
+          <button type="button" class="btn btn-ghost btn-sm" id="pageFirst" aria-label="First page">«</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="pagePrev" aria-label="Previous page">‹</button>
+          <span class="pagination-status" id="pageStatus"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="pageNext" aria-label="Next page">›</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="pageLast" aria-label="Last page">»</button>
+        </div>
+      </nav>
+    </section>
+  </main>
+
+  <dialog class="modal" id="entryModal">
+    <form id="entryForm" method="dialog">
+      <header class="modal-header">
+        <h2 id="modalTitle">Log work day</h2>
+        <button type="button" class="icon-btn" id="modalClose" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <label class="field">
+          <span>Date</span>
+          <input type="date" name="date" required />
+        </label>
+        <div class="shift-grid">
+          <fieldset class="shift">
+            <legend>AM</legend>
+            <label class="field">
+              <span>Time in</span>
+              <input type="time" name="amIn" />
+            </label>
+            <label class="field">
+              <span>Time out</span>
+              <input type="time" name="amOut" />
+            </label>
+          </fieldset>
+          <fieldset class="shift">
+            <legend>PM</legend>
+            <label class="field">
+              <span>Time in</span>
+              <input type="time" name="pmIn" />
+            </label>
+            <label class="field">
+              <span>Time out</span>
+              <input type="time" name="pmOut" />
+            </label>
+          </fieldset>
+        </div>
+        <div class="calc-preview">
+          <span>Calculated hours</span>
+          <strong class="mono" id="previewHrs">0.00</strong>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-danger" id="btnDelete" hidden>Delete</button>
+        <div class="modal-footer-right">
+          <button type="button" class="btn btn-ghost" id="btnCancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
