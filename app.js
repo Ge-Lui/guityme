@@ -420,9 +420,9 @@ async function exportExcel() {
     // Enable gridlines
     worksheet.views = [{ showGridLines: true }];
 
-    worksheet.pageSetup = {
+     worksheet.pageSetup = {
       orientation: "portrait",
-      paperSize: 1, // Letter size
+      paperSize: 5, // US Legal size (8.5 in x 14 in)
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 999, // Let it break naturally vertically
@@ -437,13 +437,13 @@ async function exportExcel() {
       printTitlesRow: "8:9", // Repeat shift headers on every page
     };
 
-    // Column widths (based on VisayasMed specifications: Date 130px, AM/PM 70px, Hours 65px)
-    worksheet.getColumn(1).width = 18.5; // Date
-    worksheet.getColumn(2).width = 10.5; // AM In
-    worksheet.getColumn(3).width = 10.5; // AM Out
-    worksheet.getColumn(4).width = 10.5; // PM In
-    worksheet.getColumn(5).width = 10.5; // PM Out
-    worksheet.getColumn(6).width = 9.5;  // Hours
+    // Column widths adjusted to fit the wider US Legal size paper
+    worksheet.getColumn(1).width = 26; // Date
+    worksheet.getColumn(2).width = 15; // AM In
+    worksheet.getColumn(3).width = 15; // AM Out
+    worksheet.getColumn(4).width = 15; // PM In
+    worksheet.getColumn(5).width = 15; // PM Out
+    worksheet.getColumn(6).width = 15; // Hours
 
     // Brand Palette
     const brandNavy = "2B5597";      // Main headers
@@ -484,21 +484,32 @@ async function exportExcel() {
     // 2. Employee Info Row (Row 3)
     worksheet.getRow(3).height = 24;
     
-    worksheet.getCell("A3").value = "Employee Name:";
-    worksheet.getCell("A3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: fontMuted } };
-    worksheet.getCell("B3").value = state.owner || "Angelu Banogbanog";
-    worksheet.getCell("B3").font = { name: "Segoe UI", size: 11, bold: true, color: { argb: darkNavy } };
+    worksheet.mergeCells("A3:C3");
+    const nameCell = worksheet.getCell("A3");
+    nameCell.value = {
+      richText: [
+        { font: { name: "Segoe UI", size: 10, color: { argb: fontMuted } }, text: "Employee Name:  " },
+        { font: { name: "Segoe UI", size: 10, bold: true, color: { argb: darkNavy } }, text: state.owner || "Angelu Banogbanog" }
+      ]
+    };
+    nameCell.alignment = { vertical: "middle", horizontal: "left" };
 
-    worksheet.getCell("D3").value = "Exported On:";
-    worksheet.getCell("D3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: fontMuted } };
-    worksheet.getCell("E3").value = new Date().toLocaleDateString("en-US", {
+    worksheet.mergeCells("D3:F3");
+    const exportCell = worksheet.getCell("D3");
+    const formattedDate = new Date().toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-    worksheet.getCell("E3").font = { name: "Segoe UI", size: 11, bold: false, color: { argb: textDark } };
+    exportCell.value = {
+      richText: [
+        { font: { name: "Segoe UI", size: 10, color: { argb: fontMuted } }, text: "Exported On:  " },
+        { font: { name: "Segoe UI", size: 10, color: { argb: textDark } }, text: formattedDate }
+      ]
+    };
+    exportCell.alignment = { vertical: "middle", horizontal: "right" };
 
     // Set background fill and bottom border for the Employee Info row (Row 3)
     for (let c = 1; c <= 6; c++) {
@@ -517,10 +528,10 @@ async function exportExcel() {
       cell.value = val.toUpperCase();
       cell.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: fontMuted } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgGray } };
-      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
       cell.border = borderStyleThin;
     });
-    worksheet.getRow(5).height = 24;
+    worksheet.getRow(5).height = 38;
 
     // Table Headers (Row 8 & 9)
     worksheet.mergeCells("A8:A9");
@@ -805,57 +816,91 @@ function importData(file) {
 }
 
 async function loadInitial() {
+  const SYNC_KEY = "angelu-total-hrs-sync-v7";
+  const hasSynced = localStorage.getItem(SYNC_KEY);
+  
+  if (!hasSynced) {
+    try {
+      const res = await fetch("./data.json");
+      if (res.ok) {
+        const data = await res.json();
+        state = {
+          owner: data.owner || "Angelu Banogbanog",
+          targetHours: data.summary?.targetHours ?? TARGET_HOURS,
+          entries: sanitizeEntries(
+            data.entries.map((e) => ({
+              ...e,
+              hours: e.hours ?? calculateHours(e.amIn, e.amOut, e.pmIn, e.pmOut),
+            }))
+          ),
+        };
+        persist();
+        localStorage.setItem(SYNC_KEY, "true");
+        localStorage.setItem("angelu-total-hrs-migrated-v6", "true");
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to force sync clean database:", e);
+    }
+  }
+
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     try {
       state = JSON.parse(saved);
       state.targetHours = state.targetHours ?? TARGET_HOURS;
       
-      let migrated = false;
-      state.entries = state.entries.map((entry) => {
-        // ID 45: April 2, 4.0 hours -> Feb 4
-        if (entry.id === 45 && entry.date === "2026-04-02" && entry.hours === 4.0) {
-          entry.date = "2026-02-04";
-          migrated = true;
-        }
-        // ID 47: April 3, 6.8 hours -> March 4
-        if (entry.id === 47 && entry.date === "2026-04-03" && entry.hours === 6.8) {
-          entry.date = "2026-03-04";
-          migrated = true;
-        }
-        // ID 67: May 2, 7.0 hours -> Feb 5
-        if (entry.id === 67 && entry.date === "2026-05-02" && entry.hours === 7.0) {
-          entry.date = "2026-02-05";
-          migrated = true;
-        }
-        // ID 69: May 3, 8.0 hours -> March 5
-        if (entry.id === 69 && entry.date === "2026-05-03" && entry.hours === 8.0) {
-          entry.date = "2026-03-05";
-          migrated = true;
-        }
-        // ID 83: June 2, 7.8333 hours -> Feb 6
-        if (entry.id === 83 && entry.date === "2026-06-02" && entry.hours === 7.8333) {
-          entry.date = "2026-02-06";
-          migrated = true;
-        }
-        // ID 85 (or duplicate June 3): June 3, 9.0/8.5 hours -> March 6
-        if (entry.date === "2026-06-03" && (entry.hours === 9.0 || entry.hours === 8.5)) {
-          entry.date = "2026-03-06";
-          migrated = true;
-        }
-        return entry;
-      });
+      const MIGRATION_KEY = "angelu-total-hrs-migrated-v6";
+      const hasMigrated = localStorage.getItem(MIGRATION_KEY);
+      
+      if (!hasMigrated) {
+        let migrated = false;
+        state.entries = state.entries.map((entry) => {
+          // ID 45: April 2, 4.0 hours -> Feb 4
+          if (entry.id === 45 && entry.date === "2026-04-02" && entry.hours === 4.0) {
+            entry.date = "2026-02-04";
+            migrated = true;
+          }
+          // ID 47: April 3, 6.8 hours -> March 4
+          if (entry.id === 47 && entry.date === "2026-04-03" && entry.hours === 6.8) {
+            entry.date = "2026-03-04";
+            migrated = true;
+          }
+          // ID 67: May 2, 7.0 hours -> Feb 5
+          if (entry.id === 67 && entry.date === "2026-05-02" && entry.hours === 7.0) {
+            entry.date = "2026-02-05";
+            migrated = true;
+          }
+          // ID 69: May 3, 8.0 hours -> March 5
+          if (entry.id === 69 && entry.date === "2026-05-03" && entry.hours === 8.0) {
+            entry.date = "2026-03-05";
+            migrated = true;
+          }
+          // ID 83: June 2, 7.8333 hours -> Feb 6
+          if (entry.id === 83 && entry.date === "2026-06-02" && entry.hours === 7.8333) {
+            entry.date = "2026-02-06";
+            migrated = true;
+          }
+          // ID 85 (or duplicate June 3): June 3, 9.0/8.5 hours -> March 6
+          if (entry.date === "2026-06-03" && (entry.hours === 9.0 || entry.hours === 8.5)) {
+            entry.date = "2026-03-06";
+            migrated = true;
+          }
+          return entry;
+        });
 
-      if (migrated) {
-        state.entries.sort((a, b) => {
-          const dateComp = a.date.localeCompare(b.date);
-          if (dateComp !== 0) return dateComp;
-          return (a.amIn || "").localeCompare(b.amIn || "");
-        });
-        state.entries.forEach((e, idx) => {
-          e.id = idx + 1;
-        });
-        persist();
+        if (migrated) {
+          state.entries.sort((a, b) => {
+            const dateComp = a.date.localeCompare(b.date);
+            if (dateComp !== 0) return dateComp;
+            return (a.amIn || "").localeCompare(b.amIn || "");
+          });
+          state.entries.forEach((e, idx) => {
+            e.id = idx + 1;
+          });
+          persist();
+        }
+        localStorage.setItem(MIGRATION_KEY, "true");
       }
 
       state.entries = sanitizeEntries(state.entries);
